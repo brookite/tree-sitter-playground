@@ -1,0 +1,723 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tree-sitter Playground</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #1e1e1e;
+            color: #d4d4d4;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .header {
+            background: #2d2d30;
+            padding: 15px 20px;
+            border-bottom: 1px solid #3e3e42;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header h1 {
+            color: #569cd6;
+            font-size: 24px;
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .checkbox-container {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .checkbox-container input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+        }
+
+        .checkbox-container label {
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        select, button {
+            padding: 8px 15px;
+            background: #3e3e42;
+            border: 1px solid #555;
+            color: #d4d4d4;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        select:hover, button:hover {
+            background: #505050;
+        }
+
+        select:focus, button:focus {
+            outline: 2px solid #569cd6;
+        }
+
+        .container {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .editor-pane, .tree-pane {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            min-width: 200px;
+        }
+
+        .resizer {
+            width: 5px;
+            background: #2d2d30;
+            cursor: col-resize;
+            position: relative;
+            flex-shrink: 0;
+        }
+
+        .resizer:hover {
+            background: #569cd6;
+        }
+
+        .resizer::before {
+            content: '';
+            position: absolute;
+            left: -3px;
+            right: -3px;
+            top: 0;
+            bottom: 0;
+        }
+
+        .pane-header {
+            background: #252526;
+            padding: 10px 15px;
+            border-bottom: 1px solid #3e3e42;
+            font-weight: 600;
+            color: #cccccc;
+        }
+
+        #code-input, #ace-editor {
+            flex: 1;
+            padding: 15px;
+            background: #1e1e1e;
+            color: #d4d4d4;
+            border: none;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 14px;
+            resize: none;
+            outline: none;
+            line-height: 1.5;
+        }
+
+        #ace-editor {
+            display: none;
+            padding: 0;
+        }
+
+        #tree-output {
+            flex: 1;
+            padding: 15px;
+            overflow: auto;
+            background: #1e1e1e;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 13px;
+        }
+
+        .tree-node {
+            margin-left: 20px;
+            position: relative;
+        }
+
+        .tree-node-header {
+            padding: 4px 8px;
+            cursor: pointer;
+            border-radius: 3px;
+            margin: 2px 0;
+            user-select: none;
+            display: inline-block;
+        }
+
+        .tree-node-header:hover {
+            background: #2a2d2e;
+        }
+
+        .tree-node-header.highlighted {
+            background: #264f78;
+        }
+
+        .node-type {
+            color: #4ec9b0;
+            font-weight: 600;
+        }
+
+        .node-type.anonymous {
+            color: #808080;
+            font-style: italic;
+        }
+
+        .tree-node.anonymous {
+            opacity: 0.6;
+        }
+
+        .node-text {
+            color: #ce9178;
+            margin-left: 8px;
+        }
+
+        .node-position {
+            color: #858585;
+            font-size: 11px;
+            margin-left: 8px;
+        }
+
+        .tree-node-children {
+            margin-left: 15px;
+            border-left: 1px solid #3e3e42;
+            padding-left: 5px;
+        }
+
+        .toggle-icon {
+            display: inline-block;
+            width: 12px;
+            text-align: center;
+            margin-right: 4px;
+            color: #858585;
+        }
+
+        .collapsed > .tree-node-children {
+            display: none;
+        }
+
+        .error {
+            color: #f48771;
+            padding: 15px;
+            background: #2d1e1e;
+            border-left: 3px solid #f48771;
+            margin: 10px;
+        }
+
+        .stats {
+            padding: 10px 15px;
+            background: #252526;
+            border-top: 1px solid #3e3e42;
+            color: #858585;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Tree-sitter Playground</h1>
+        <div class="controls">
+            <div class="checkbox-container">
+                <input type="checkbox" id="show-anonymous" />
+                <label for="show-anonymous">Show anonymous nodes</label>
+            </div>
+            <select id="language-select">
+                {% for lang in languages %}
+                <option value="{{ lang }}" {% if lang == 'python' %}selected{% endif %}>{{ lang }}</option>
+                {% endfor %}
+            </select>
+            <button id="parse-btn">Parse</button>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="editor-pane">
+            <div class="pane-header">Code Editor</div>
+            <textarea id="code-input" placeholder="Paste your code here...">def fibonacci(n):
+    if n <= 1:
+        return n
+    return fibonacci(n - 1) + fibonacci(n - 2)
+
+# Calculate fibonacci
+result = fibonacci(10)
+print(f"Result: {result}")</textarea>
+            <div id="ace-editor" aria-label="Code Editor"></div>
+        </div>
+
+        <div class="resizer" id="resizer"></div>
+
+        <div class="tree-pane">
+            <div class="pane-header">Syntax Tree</div>
+            <div id="tree-output"></div>
+            <div class="stats" id="stats"></div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/ace-builds@1.43.2/src-noconflict/ace.js"></script>
+    <script>
+        const codeInput = document.getElementById('code-input');
+        const aceEditorElement = document.getElementById('ace-editor');
+        const treeOutput = document.getElementById('tree-output');
+        const languageSelect = document.getElementById('language-select');
+        const parseBtn = document.getElementById('parse-btn');
+        const statsDiv = document.getElementById('stats');
+        const showAnonymousCheckbox = document.getElementById('show-anonymous');
+        const resizer = document.getElementById('resizer');
+
+        let currentHighlight = null;
+        let currentAST = null;
+        let byteToCharMap = [];
+        let charToByteMap = [];
+        let debounceTimer = null;
+        let showAnonymous = false;
+        let aceEditor = null;
+
+        const aceModes = {
+            bash: 'sh', c: 'c_cpp', cpp: 'c_cpp', csharp: 'csharp', css: 'css',
+            dockerfile: 'dockerfile', go: 'golang', html: 'html', java: 'java',
+            javascript: 'javascript', json: 'json', jsx: 'jsx', kotlin: 'kotlin',
+            markdown: 'markdown', php: 'php', python: 'python', ruby: 'ruby',
+            rust: 'rust', sql: 'sql', toml: 'toml', typescript: 'typescript',
+            tsx: 'tsx', xml: 'xml', yaml: 'yaml'
+        };
+
+        function getCode() {
+            return aceEditor ? aceEditor.getValue() : codeInput.value;
+        }
+
+        function getSelectionOffsets() {
+            if (!aceEditor) {
+                return { start: codeInput.selectionStart, end: codeInput.selectionEnd };
+            }
+            const range = aceEditor.getSelectionRange();
+            return {
+                start: aceEditor.session.doc.positionToIndex(range.start, 0),
+                end: aceEditor.session.doc.positionToIndex(range.end, 0)
+            };
+        }
+
+        function updateEditorMode() {
+            if (!aceEditor) return;
+            aceEditor.session.setMode(`ace/mode/${aceModes[languageSelect.value] || 'text'}`);
+        }
+
+        function initializeAce() {
+            if (!window.ace) return;
+
+            window.ace.config.set(
+                'basePath',
+                'https://cdn.jsdelivr.net/npm/ace-builds@1.43.2/src-noconflict'
+            );
+            aceEditor = window.ace.edit(aceEditorElement);
+            aceEditor.setTheme('ace/theme/tomorrow_night');
+            aceEditor.setOptions({ fontSize: '14px', showPrintMargin: false, useWorker: false });
+            aceEditor.setValue(codeInput.value, -1);
+            aceEditorElement.style.display = 'block';
+            codeInput.style.display = 'none';
+            updateEditorMode();
+
+            aceEditor.session.on('change', debouncedParse);
+            aceEditor.selection.on('changeSelection', onCodeSelection);
+            aceEditor.commands.addCommand({
+                name: 'parse-code',
+                bindKey: { win: 'Ctrl-Enter', mac: 'Command-Enter' },
+                exec: () => {
+                    if (debounceTimer) clearTimeout(debounceTimer);
+                    parseCode();
+                }
+            });
+        }
+
+        // Build bidirectional mapping between byte offsets and character positions
+        function buildByteCharMaps(text) {
+            const encoder = new TextEncoder();
+            byteToCharMap = [];
+            charToByteMap = [];
+            
+            let byteOffset = 0;
+            for (let charIndex = 0; charIndex < text.length;) {
+                const codePoint = text.codePointAt(charIndex);
+                const char = String.fromCodePoint(codePoint);
+                const encoded = encoder.encode(char);
+                
+                charToByteMap[charIndex] = byteOffset;
+                if (char.length === 2) charToByteMap[charIndex + 1] = byteOffset;
+                for (let i = 0; i < encoded.length; i++) {
+                    byteToCharMap[byteOffset + i] = charIndex;
+                }
+                
+                byteOffset += encoded.length;
+                charIndex += char.length;
+            }
+            // Add final mapping
+            charToByteMap[text.length] = byteOffset;
+            byteToCharMap[byteOffset] = text.length;
+        }
+
+        function byteOffsetToCharIndex(byteOffset) {
+            return byteToCharMap[byteOffset] ?? 0;
+        }
+
+        function charIndexToByteOffset(charIndex) {
+            return charToByteMap[charIndex] ?? 0;
+        }
+
+        function renderNode(node, depth = 0) {
+            // Skip anonymous nodes if checkbox is unchecked
+            if (!showAnonymous && !node.is_named) {
+                // Still render children
+                const fragment = document.createDocumentFragment();
+                if (node.children) {
+                    node.children.forEach(child => {
+                        const childNode = renderNode(child, depth);
+                        if (childNode) fragment.appendChild(childNode);
+                    });
+                }
+                return fragment;
+            }
+
+            const div = document.createElement('div');
+            div.className = 'tree-node';
+            if (!node.is_named) {
+                div.classList.add('anonymous');
+            }
+            
+            const header = document.createElement('div');
+            header.className = 'tree-node-header';
+            
+            const hasChildren = node.children && node.children.length > 0;
+            const toggleIcon = document.createElement('span');
+            toggleIcon.className = 'toggle-icon';
+            toggleIcon.textContent = hasChildren ? '▼' : '○';
+            header.appendChild(toggleIcon);
+            
+            const typeSpan = document.createElement('span');
+            typeSpan.className = 'node-type';
+            if (!node.is_named) {
+                typeSpan.classList.add('anonymous');
+            }
+            typeSpan.textContent = node.type;
+            header.appendChild(typeSpan);
+            
+            if (node.text && node.text.length < 50) {
+                const textSpan = document.createElement('span');
+                textSpan.className = 'node-text';
+                textSpan.textContent = `"${node.text.replace(/\n/g, '\\n')}"`;
+                header.appendChild(textSpan);
+            }
+            
+            const posSpan = document.createElement('span');
+            posSpan.className = 'node-position';
+            posSpan.textContent = `[${node.start_point.row}:${node.start_point.column} - ${node.end_point.row}:${node.end_point.column}]`;
+            header.appendChild(posSpan);
+            
+            div.appendChild(header);
+            
+            // Click to highlight corresponding code
+            header.addEventListener('click', (e) => {
+                e.stopPropagation();
+                highlightCode(node.start_byte, node.end_byte);
+                
+                // Remove previous highlight
+                if (currentHighlight) {
+                    currentHighlight.classList.remove('highlighted');
+                }
+                header.classList.add('highlighted');
+                currentHighlight = header;
+            });
+            
+            // Toggle children visibility
+            if (hasChildren) {
+                header.addEventListener('dblclick', (e) => {
+                    e.stopPropagation();
+                    div.classList.toggle('collapsed');
+                    toggleIcon.textContent = div.classList.contains('collapsed') ? '▶' : '▼';
+                });
+            }
+            
+            if (hasChildren) {
+                const childrenDiv = document.createElement('div');
+                childrenDiv.className = 'tree-node-children';
+                
+                node.children.forEach(child => {
+                    const childNode = renderNode(child, depth + 1);
+                    if (childNode) childrenDiv.appendChild(childNode);
+                });
+                
+                div.appendChild(childrenDiv);
+            }
+            
+            return div;
+        }
+
+        function highlightCode(startByte, endByte) {
+            // Convert byte offsets to character positions
+            const startChar = byteOffsetToCharIndex(startByte);
+            const endChar = byteOffsetToCharIndex(endByte);
+            
+            // Set selection
+            if (aceEditor) {
+                const Range = window.ace.require('ace/range').Range;
+                const session = aceEditor.session;
+                const start = session.doc.indexToPosition(startChar, 0);
+                const end = session.doc.indexToPosition(endChar, 0);
+                aceEditor.selection.setRange(new Range(start.row, start.column, end.row, end.column));
+                aceEditor.focus();
+                aceEditor.scrollToLine(start.row, true, true, () => {});
+                return;
+            }
+
+            codeInput.focus();
+            codeInput.setSelectionRange(startChar, endChar);
+            
+            // Scroll to selection
+            const code = getCode();
+            const before = code.substring(0, startChar);
+            const lines = before.split('\n');
+            const lineHeight = 21; // approximate
+            const scrollTo = (lines.length - 1) * lineHeight;
+            codeInput.scrollTop = Math.max(0, scrollTo - 100);
+        }
+
+        function findNodeAtPosition(node, startByte, endByte) {
+            // Check if this node contains the selection
+            if (node.start_byte <= startByte && node.end_byte >= endByte) {
+                // Try to find a more specific child node
+                if (node.children) {
+                    for (const child of node.children) {
+                        const found = findNodeAtPosition(child, startByte, endByte);
+                        if (found) return found;
+                    }
+                }
+                // Return this node if no child is more specific
+                return node;
+            }
+            return null;
+        }
+
+        function highlightNodeInTree(node) {
+            // Find the corresponding DOM element
+            const allHeaders = treeOutput.querySelectorAll('.tree-node-header');
+            for (const header of allHeaders) {
+                const nodeType = header.querySelector('.node-type').textContent;
+                const posText = header.querySelector('.node-position').textContent;
+                
+                // Parse position from text [row:col - row:col]
+                const match = posText.match(/\[(\d+):(\d+) - (\d+):(\d+)\]/);
+                if (match) {
+                    const startRow = parseInt(match[1]);
+                    const startCol = parseInt(match[2]);
+                    const endRow = parseInt(match[3]);
+                    const endCol = parseInt(match[4]);
+                    
+                    if (nodeType === node.type &&
+                        startRow === node.start_point.row &&
+                        startCol === node.start_point.column &&
+                        endRow === node.end_point.row &&
+                        endCol === node.end_point.column) {
+                        
+                        // Remove previous highlight
+                        if (currentHighlight) {
+                            currentHighlight.classList.remove('highlighted');
+                        }
+                        
+                        header.classList.add('highlighted');
+                        currentHighlight = header;
+                        
+                        // Scroll into view
+                        header.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        
+                        return;
+                    }
+                }
+            }
+        }
+
+        // Handle text selection in code editor
+        function onCodeSelection() {
+            if (!currentAST) return;
+            
+            const { start, end } = getSelectionOffsets();
+            
+            // No selection
+            if (start === end) return;
+            
+            // Convert character positions to byte offsets
+            const startByte = charIndexToByteOffset(start);
+            const endByte = charIndexToByteOffset(end);
+            
+            // Find the most specific node containing this selection
+            const node = findNodeAtPosition(currentAST, startByte, endByte);
+            
+            if (node) {
+                highlightNodeInTree(node);
+            }
+        }
+
+        async function parseCode() {
+            const code = getCode();
+            const language = languageSelect.value;
+            
+            treeOutput.innerHTML = '<div style="padding: 15px; color: #858585;">Parsing...</div>';
+            statsDiv.textContent = '';
+            
+            // Build byte-to-char mappings for Unicode handling
+            buildByteCharMaps(code);
+            
+            try {
+                const response = await fetch('/parse', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ code, language }),
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    currentAST = result.ast;
+                    treeOutput.innerHTML = '';
+                    treeOutput.appendChild(renderNode(result.ast));
+                    
+                    // Calculate stats
+                    const nodeCount = countNodes(result.ast);
+                    statsDiv.textContent = `Nodes: ${nodeCount} | Language: ${language} | Lines: ${code.split('\n').length}`;
+                } else {
+                    currentAST = null;
+                    treeOutput.innerHTML = `<div class="error">Error: ${result.error}</div>`;
+                    statsDiv.textContent = '';
+                }
+            } catch (error) {
+                currentAST = null;
+                treeOutput.innerHTML = `<div class="error">Request failed: ${error.message}</div>`;
+                statsDiv.textContent = '';
+            }
+        }
+
+        function debouncedParse() {
+            // Clear existing timer
+            if (debounceTimer) {
+                clearTimeout(debounceTimer);
+            }
+            
+            // Set new timer (500ms delay)
+            debounceTimer = setTimeout(() => {
+                parseCode();
+            }, 500);
+        }
+
+        function countNodes(node) {
+            let count = 1;
+            if (node.children) {
+                node.children.forEach(child => {
+                    count += countNodes(child);
+                });
+            }
+            return count;
+        }
+
+        // Event listeners
+        parseBtn.addEventListener('click', parseCode);
+        
+        languageSelect.addEventListener('change', () => {
+            updateEditorMode();
+            parseCode();
+        });
+        
+        // Toggle anonymous nodes
+        showAnonymousCheckbox.addEventListener('change', (e) => {
+            showAnonymous = e.target.checked;
+            if (currentAST) {
+                treeOutput.innerHTML = '';
+                treeOutput.appendChild(renderNode(currentAST));
+            }
+        });
+        
+        // Auto-parse on input with debounce
+        codeInput.addEventListener('input', debouncedParse);
+        
+        // Listen for text selection in code editor
+        codeInput.addEventListener('mouseup', onCodeSelection);
+        codeInput.addEventListener('keyup', (e) => {
+            // Trigger on arrow keys and shift selection
+            if (e.shiftKey || ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
+                onCodeSelection();
+            }
+        });
+        
+        // Auto-parse on load
+        window.addEventListener('load', () => {
+            initializeAce();
+            parseCode();
+        });
+        
+        // Auto-parse on Ctrl+Enter
+        codeInput.addEventListener('keydown', (e) => {
+            if (e.ctrlKey && e.key === 'Enter') {
+                e.preventDefault();
+                // Cancel debounce and parse immediately
+                if (debounceTimer) {
+                    clearTimeout(debounceTimer);
+                }
+                parseCode();
+            }
+        });
+
+        // Resizer functionality
+        let isResizing = false;
+        let startX = 0;
+        let startWidth = 0;
+
+        resizer.addEventListener('mousedown', (e) => {
+            isResizing = true;
+            startX = e.clientX;
+            const editorPane = document.querySelector('.editor-pane');
+            startWidth = editorPane.offsetWidth;
+            document.body.style.cursor = 'col-resize';
+            e.preventDefault();
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!isResizing) return;
+            
+            const container = document.querySelector('.container');
+            const editorPane = document.querySelector('.editor-pane');
+            const delta = e.clientX - startX;
+            const newWidth = startWidth + delta;
+            const containerWidth = container.offsetWidth;
+            const minWidth = 200;
+            const maxWidth = containerWidth - minWidth - 5; // 5px for resizer
+            
+            if (newWidth >= minWidth && newWidth <= maxWidth) {
+                const percentage = (newWidth / containerWidth) * 100;
+                editorPane.style.flex = `0 0 ${percentage}%`;
+            }
+        });
+
+        document.addEventListener('mouseup', () => {
+            if (isResizing) {
+                isResizing = false;
+                document.body.style.cursor = '';
+            }
+        });
+    </script>
+</body>
+</html>

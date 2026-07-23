@@ -1,0 +1,44 @@
+[project]
+name = "treesitter-playground"
+version = "0.1.0"
+description = "A local Tree-sitter playground with an HTTP UI and MCP interface"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.139,<1",
+    "jinja2>=3.1,<4",
+    "mcp>=1.27,<2",
+    "tree-sitter-language-pack>=0.12",
+    "uvicorn>=0.51,<1",
+]
+
+[build-system]
+requires = ["setuptools>=80"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+py-modules = ["treesitter_playground"]
+
+[project.scripts]
+ts-playground = "treesitter_playground:main"
+
+[tool.uv]
+package = true
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28",
+    "pyright>=1.1.400",
+    "pytest>=9.1",
+    "ruff>=0.15",
+]
+
+[tool.pyright]
+typeCheckingMode = "standard"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
